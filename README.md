@@ -1,2 +1,3 @@
 # qinglong-scripts
-自用青龙脚本
+无可奉告
+O-O
