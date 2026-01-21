@@ -1,27 +1,30 @@
 /*
  作者：踟蹰
- 日期：20241024
+ 日期：20260120
  APP：华住会
  功能：签到
- 抓包：hweb-personalcenter.huazhu.com/login/autoLogin 此域名下的 user-token （有效期未知）
- 变量格式：export HZH_Token="xxxxxxxxxxxxx,xxxxxxxxxxxxx" //多个 token 以逗号分隔存储在环境变量中
+ 抓包：hweb-personalcenter.huazhu.com/login/autoLogin 此域名下的 user-token （有效期未知，只要手机 app 不退出登录应该就一直有效）
+ 变量格式：export HZH="自定义账号名称1#xxxxxxxxxxxxx,自定义账号名称2#xxxxxxxxxxxxx" //多个 token 以 , 分隔存储在环境变量中，自定义账号名称与 token 之间用 # 连接
  定时：一天一次
  cron：0 8 * * *
  */
 require('dotenv').config(); 
 
 const pushplus_token = process.env.PUSH_PLUS_TOKEN; 
-const tokens = process.env.HZH_Token.split(',');
-let message = "华住会签到\n";
+const tokens = process.env.HZH.split(',').map(item => {
+    const [name, token] = item.split('#');
+    return { name: name.trim(), token: token.trim() };
+});
+let message = "华住会签到\n\n";
 
 !(async () => {
     if (typeof $request !== "undefined") {
         getToken();
         return;
     }
-    for (const token of tokens) {
-        await signin(token);
-        await status(token);
+    for (const { name, token } of tokens) {
+        await signin(token, name);
+        await status(token, name);
     }
     await notify();
 })()
@@ -32,7 +35,7 @@ let message = "华住会签到\n";
     console.log('结束执行');
 });
 
-async function signin(token) {
+async function signin(token, name) {
     const signinRequest = {
         url: "https://hweb-mbf.huazhu.com/api/signIn",
         headers: {
@@ -48,19 +51,19 @@ async function signin(token) {
         const result = JSON.parse(data);
         if (result?.businessCode === '1000') {
             if (result?.content.success) {
-                message += `Token: ${token} 签到:获得积分:${result?.content.point}\n`;
+                message += `${name}\n签到:获得积分:${result?.content.point}\n`;
             } else if (result?.content.isSign) {
-                message += `Token: ${token} 签到:请勿重复签到\n`;
+                message += `${name}\n签到:请勿重复签到\n`;
             }
         } else {
-            message += `Token: ${token} ❌${result?.message}\n`;
+            message += `${name}\n❌${result?.message}\n`;
         }
     } catch (e) {
-        console.log(`Token: ${token} ❌请重新登陆更新Token`);
+        message += `${name}\n❌请重新登陆更新Token\n`;
     }
 }
 
-async function status(token) {
+async function status(token, name) {
     const statusRequest = {
         url: 'https://hweb-mbf.huazhu.com/api/getPoint',
         headers: {
@@ -75,12 +78,12 @@ async function status(token) {
         const data = await post(statusRequest);
         const result = JSON.parse(data);
         if (result?.businessCode === '1000') {
-            message += `Token: ${token} 当前积分:${result?.content.point}\n`;
+            message += `当前积分:${result?.content.point}\n\n`;
         } else {
-            console.log(`Token: ${token} ❌请重新登陆更新Token`);
+            message += `❌请重新登陆更新Token\n\n`;
         }
     } catch (e) {
-        console.log(`Token: ${token} 请求状态失败:`, e);
+        message += `${name}\n请求状态失败\n\n`;
     }
 }
 
@@ -91,7 +94,7 @@ async function notify() {
 
 async function sendPushplusNotification(content) {
     const notifyRequest = {
-        url: 'http://www.pushplus.plus/send',
+        url: 'https://www.pushplus.plus/send', 
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -99,7 +102,8 @@ async function sendPushplusNotification(content) {
         body: JSON.stringify({
             token: pushplus_token,
             title: '华住会酒店签到通知', 
-            content: content,
+            content: content.replace(/\n/g, '<br/>'), 
+            template: "html" 
         }),
     };
 
